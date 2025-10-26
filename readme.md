@@ -1,7 +1,7 @@
 Nixie clock code © 2025 by Toni Mäkelä is licensed under CC BY-NC-SA 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by-nc-sa/4.0/ 
 
 
-# Nixie Clock — Firmware v5.2  
+# Nixie Clock project
 *Makela Research, 2025*  
 
 A fully self-contained, real-time, DS3231-driven Nixie clock firmware for Arduino.  
@@ -11,7 +11,7 @@ Includes smooth digit transitions, cathode-cleaning cycles, automatic DST correc
 
 ## 🕒 Overview
 
-This firmware drives a 4-digit IN-16 Nixie tube clock using shift registers and an external DS3231 RTC module.  
+Firmware drives a 4-digit IN-16 Nixie tube clock using shift registers and an external DS3231 RTC module.  
 All animations, display logic, and time calculations are handled in firmware — no external libraries are required beyond `Wire.h`.
 
 The DS3231 stores and maintains **UTC time**, while the Arduino applies user-defined timezone and daylight saving rules dynamically before displaying local time.
