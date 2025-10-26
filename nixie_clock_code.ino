@@ -1,15 +1,30 @@
 // ============================================================
 // Nixie clock code © 2025 by Toni Mäkelä is licensed under CC BY-NC-SA 4.0. 
-//To view a copy of this license, visit https://creativecommons.org/licenses/by-nc-sa/4.0/  
-// Nixie Clock main code v4.5
+// To view a copy of this license, visit https://creativecommons.org/licenses/by-nc-sa/4.0/  
+// Nixie Clock main code v5.2
 // Last updated 26.10.2025
-//============================================================
+// ===========================================================
 
 #include <Wire.h>
 
+// ================= TEMPERATURE SAFETY SYSTEM =================
+const int PIN_NTC = A7;           // NTC sensor input
+const float NTC_R_REF = 10000.0;  // 10k reference resistor
+const float NTC_R0 = 10000.0;     // 10k at 25°C
+const float NTC_T0_K = 298.15;    // 25°C in Kelvin
+const float NTC_BETA = 3977.0;    // NTC beta value (from datasheet)
+
+// Thresholds (adjust as needed)
+const float TEMP_SHUTOFF_C = 65.0;   // disable HV above this temp
+const float TEMP_REENABLE_C = 55.0;  // re-enable HV below this temp
+
+bool hvEnabled = true;  // tracks HV state
+// =============================================================
+
+
 // ---------------------- User Settings ----------------------
 #define TIMEZONE                      2   // Base timezone (+ or - UTC)
-#define USE_DST                       1   // Enable daylight saving time (1=YES, 0=NO), follows European standard, refer to row 76 forwards
+#define USE_DST                       1   // Enable daylight saving time (1=YES, 0=NO)
 
 #define BLANK_MS                   1000
 #define FLICK_MIN_FRAMES              4
@@ -28,6 +43,10 @@
 #define FLICK_ORDER_RANDOM            0
 #define HOUR_FLICKER_BIAS_FRAMES      2
 // ------------------------------------------------------------
+
+// --- Forward declarations (temperature safety) ---
+float readNTC_TemperatureC();
+void updateThermalGuard();
 
 // ---- Pins ----
 const int PIN_SRCLR = 8;
@@ -74,7 +93,6 @@ bool isDST_EU_UTC(int year, int month, int day, int hourUTC){
   for(int d=31; d>=25; --d){ if(weekday(year,3,d)==0){ lastSunMar=d; break; } }
   for(int d=31; d>=25; --d){ if(weekday(year,10,d)==0){ lastSunOct=d; break; } }
 
-  // EU rule (UTC): starts 01:00 UTC last Sunday in March, ends 01:00 UTC last Sunday in October
   if (month < 3 || month > 10) return false;
   if (month > 3 && month < 10) return true;
   if (month == 3)  return (day > lastSunMar) || (day == lastSunMar && hourUTC >= 1);
@@ -207,6 +225,9 @@ void setup(){
 
   resyncToZeros();
   cathodeClean();
+
+  pinMode(PIN_NTC, INPUT);
+  Serial.println(F("Temperature safety initialized."));
 }
 
 // ------------------------------------------------------------
@@ -234,7 +255,6 @@ void loop(){
   if (!midnightAnimRan && localH == 23 && rtcM == 59 && rtcS >= MIDNIGHT_TRIGGER_SEC) {
     midnightAnimRan = true;
 
-    // Read date *before* countdown starts
     uint8_t dateBufStart[3];
     bool isNewYearEve = false;
     if (rtcRead(0x04, dateBufStart, 3)) {
@@ -243,25 +263,19 @@ void loop(){
       if (monthS == 12 && dayS == 31) isNewYearEve = true;
     }
 
-    // Countdown animation
     midnightCountdown(MIDNIGHT_COUNTDOWN_MS);
-
-    // Immediately after countdown: blank and hold
     showDigits(255,255,255,255);
     delay(200);
 
-    // If New Year’s Eve, show next year
     if (isNewYearEve) {
       newYearDisplay(10000);
     } else {
       showDigits(0,0,0,0);
       delay(1000);
     }
-
-    return; // Skip displaying 23:59 again
+    return;
   }
 
-  // Reset after 01:00 local
   if (midnightAnimRan && localH >= 1) midnightAnimRan = false;
 
   // --- Hourly cathode clean ---
@@ -287,5 +301,40 @@ void loop(){
 
   for (uint8_t i=0;i<4;i++) lastDigits[i]=newDigits[i];
 
+  updateThermalGuard();
   delay(LOOP_UPDATE_MS);
+}
+
+// =============================================================
+//  Temperature Safety Implementation
+// =============================================================
+
+float readNTC_TemperatureC() {
+  int raw = analogRead(PIN_NTC);
+  float v = (raw / 1023.0) * 5.0;
+  if (v < 0.01f) v = 0.01f;  // avoid div/0
+
+  // For wiring: 5V → NTC → A7 → 10k → GND
+  float r_ntc = NTC_R_REF * (5.0f / v - 1.0f);
+  float tK = 1.0f / ((1.0f / NTC_T0_K) + (1.0f / NTC_BETA) * log(r_ntc / NTC_R0));
+  return tK - 273.15f;
+}
+
+void updateThermalGuard() {
+  float tempC = readNTC_TemperatureC();
+
+  if (hvEnabled && tempC >= TEMP_SHUTOFF_C) {
+    hvEnabled = false;
+    digitalWrite(PIN_HVDIS, HIGH);
+    Serial.print(F("[THERMAL] HV DISABLED at ")); Serial.print(tempC); Serial.println(F(" °C"));
+  }
+  else if (!hvEnabled && tempC <= TEMP_REENABLE_C) {
+    hvEnabled = true;
+    digitalWrite(PIN_HVDIS, LOW);
+    Serial.print(F("[THERMAL] HV ENABLED at ")); Serial.print(tempC); Serial.println(F(" °C"));
+  }
+
+  Serial.print(F("Temp: ")); Serial.print(tempC);
+  Serial.print(F(" °C | HV: "));
+  Serial.println(hvEnabled ? F("ON") : F("OFF"));
 }
