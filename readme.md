@@ -1,7 +1,7 @@
 Nixie clock code © 2025 by Toni Mäkelä is licensed under CC BY-NC-SA 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by-nc-sa/4.0/ 
 
 
-# Makela Nixie Clock — Firmware v4.5  
+# Nixie Clock — Firmware v5.2  
 *Makela Research, 2025*  
 
 A fully self-contained, real-time, DS3231-driven Nixie clock firmware for Arduino.  
